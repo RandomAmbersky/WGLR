@@ -1,0 +1,32 @@
+[package]
+name = "wasm-test"
+version = "0.1.0"
+authors = ["jesmp <joao.eduardo@lar.app>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wasm-bindgen = "0.2.60"
+wasm-bindgen-futures = "0.4.10"
+js-sys="0.3.37"
+cgmath = "0.17.0"
+
+[dependencies.web-sys]
+version = "0.3.4"
+features = [
+    'Document',
+    'Element',
+    'HtmlCanvasElement',
+    'HtmlImageElement',
+    'WebGlBuffer',
+    'WebGlRenderingContext',
+    'WebGlUniformLocation',
+    'WebGlProgram',
+    'WebGlShader',
+    'WebGlTexture',
+    'Window',
+]
+
+[lib]
+crate-type = ["cdylib"]
