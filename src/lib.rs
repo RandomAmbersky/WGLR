@@ -11,6 +11,9 @@ extern "C" {
     fn log(s: &str);
 }
 
+const VIEWPORT_WIDTH: i32 = 512;
+const VIEWPORT_HEIGHT: i32 = 512;
+
 #[wasm_bindgen(start)]
 pub async fn start() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or(JsValue::from_str("No window detected."))?;
@@ -24,19 +27,19 @@ pub async fn start() -> Result<(), JsValue> {
         .ok_or(JsValue::from_str("No canvas in document."))?
         .dyn_into::<web_sys::HtmlCanvasElement>()?;
 
-    canvas.set_width(800);
+    canvas.set_width(VIEWPORT_WIDTH as u32);
 
-    canvas.set_height(600);
+    canvas.set_height(VIEWPORT_HEIGHT as u32);
 
-    let mut renderer = renderer::WglRenderer::new(&canvas, (800, 600))?;
+    let mut renderer = renderer::WglRenderer2d::new(&canvas, (VIEWPORT_WIDTH as f32, VIEWPORT_HEIGHT as f32))?;
 
-    let render_target = renderer.create_render_target(128, 128)?;
+    let render_target = renderer.create_render_target(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)?;
 
     let texture = renderer.load_texture("./dwayne.png").await?;
 
     renderer.set_render_target(&render_target)?;
 
-    renderer.clear_screen([0.0, 0.0, 0.0, 1.0]);
+    renderer.clear_render_target([0.0, 0.0, 0.0, 1.0]);
 
     renderer.draw_texture(
         &texture,
@@ -44,24 +47,16 @@ pub async fn start() -> Result<(), JsValue> {
         &WglRect::new(0, 0, texture.w, texture.h),
     )?;
 
-    renderer.draw_texture(
-        &texture,
-        &WglRect::new(0, 0, texture.w, texture.h),
-        &WglRect::new(0, 0, texture.w, texture.h),
-    )?;
+    log(&format!("{} {}", texture.w, texture.h));
 
     renderer.set_render_target(None)?;
+
+    renderer.clear_render_target([0.0, 1.0, 0.0, 1.0]);
 
     renderer.draw_texture(
         &render_target,
         &WglRect::new(0, 0, render_target.w, render_target.h),
-        &WglRect::new(0, 0, 800, 600),
-    )?;
-
-    renderer.draw_texture(
-        &texture,
-        &WglRect::new(0, 0, texture.w, texture.h),
-        &WglRect::new(0, 0, texture.w, texture.h),
+        &WglRect::new(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT),
     )?;
 
     renderer.present();

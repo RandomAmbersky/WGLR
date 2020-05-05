@@ -21,18 +21,18 @@ impl WglRect {
     }
 }
 
-pub struct WglRenderer<'a> {
+pub struct WglRenderer2d<'a> {
     context: GlContext,
     program: WebGlProgram,
     buffer: [Vertex2D; 4],
     indices: [i16; 6],
     framebuffer: Option<WebGlFramebuffer>,
     render_target: Option<&'a WglTexture>,
-    resolution: (i32, i32),
+    resolution: (f32, f32),
 }
 
-impl<'a> WglRenderer<'a> {
-    pub fn new(canvas: &HtmlCanvasElement, resolution: (i32, i32)) -> Result<Self, JsValue> {
+impl<'a> WglRenderer2d<'a> {
+    pub fn new(canvas: &HtmlCanvasElement, resolution: (f32, f32)) -> Result<Self, JsValue> {
         let context = canvas
             .get_context("webgl")?
             .ok_or("")?
@@ -98,7 +98,7 @@ impl<'a> WglRenderer<'a> {
         self.context.flush();
     }
 
-    pub fn clear_screen(&self, color: [f32; 4]) {
+    pub fn clear_render_target(&self, color: [f32; 4]) {
         self.context
             .clear_color(color[0], color[1], color[2], color[3]);
         self.context.clear(GlContext::COLOR_BUFFER_BIT);
@@ -164,7 +164,7 @@ impl<'a> WglRenderer<'a> {
             .context
             .get_uniform_location(&self.program, "projection");
         let projection: cgmath::Matrix4<f32> =
-            cgmath::ortho(0.0, 800.0, 600.0, 0.0, 0.0, 100.0).into();
+            cgmath::ortho(0.0, self.resolution.0, self.resolution.1, 0.0, 0.0, 100.0).into();
         let projection: &[f32; 16] = projection.as_ref();
         self.context.uniform_matrix4fv_with_f32_array(
             projection_offset.as_ref(),
