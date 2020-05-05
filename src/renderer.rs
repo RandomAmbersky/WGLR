@@ -1,8 +1,8 @@
 use crate::vertex::{AsF32Slice, Vertex2D};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
-    HtmlCanvasElement, HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader,
-    WebGlTexture,
+    HtmlCanvasElement, HtmlImageElement, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext,
+    WebGlShader, WebGlTexture,
 };
 
 type GlContext = WebGlRenderingContext;
@@ -15,15 +15,24 @@ pub struct WglRect {
     pub h: i32,
 }
 
-pub struct WglRenderer {
+impl WglRect {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        Self { x, y, w , h }
+    }
+}
+
+pub struct WglRenderer<'a> {
     context: GlContext,
     program: WebGlProgram,
     buffer: [Vertex2D; 4],
     indices: [i16; 6],
+    framebuffer: Option<WebGlFramebuffer>,
+    render_target: Option<&'a WglTexture>,
+    resolution: (i32, i32),
 }
 
-impl WglRenderer {
-    pub fn new(canvas: &HtmlCanvasElement) -> Result<Self, JsValue> {
+impl<'a> WglRenderer<'a> {
+    pub fn new(canvas: &HtmlCanvasElement, resolution: (i32, i32)) -> Result<Self, JsValue> {
         let context = canvas
             .get_context("webgl")?
             .ok_or("")?
@@ -79,6 +88,9 @@ impl WglRenderer {
             program,
             buffer,
             indices,
+            render_target: None,
+            framebuffer: None,
+            resolution,
         })
     }
 
@@ -99,19 +111,16 @@ impl WglRenderer {
         dest_rect: &WglRect,
     ) -> Result<(), String> {
         let left = src_rect.x as f32 / texture.w as f32;
-
         if left > 1.0 {
             return Ok(());
         }
 
         let top = src_rect.y as f32 / texture.h as f32;
-
         if top > 1.0 {
             return Ok(());
         }
 
         let right = src_rect.w as f32 / texture.w as f32;
-
         let bottom = src_rect.h as f32 / texture.h as f32;
 
         unsafe {
@@ -122,22 +131,38 @@ impl WglRenderer {
             self.buffer.get_unchecked_mut(3).tex_coords = [right, top];
         }
 
-        let dest_rect_x_offset = self.context.get_uniform_location(&self.program, "destRect.x");
-        let dest_rect_y_offset = self.context.get_uniform_location(&self.program, "destRect.y");
-        let dest_rect_w_offset = self.context.get_uniform_location(&self.program, "destRect.w");
-        let dest_rect_h_offset = self.context.get_uniform_location(&self.program, "destRect.h");
-        self.context.uniform1f(dest_rect_x_offset.as_ref(), dest_rect.x as f32);
-        self.context.uniform1f(dest_rect_y_offset.as_ref(), dest_rect.y as f32);
-        self.context.uniform1f(dest_rect_w_offset.as_ref(), dest_rect.w as f32);
-        self.context.uniform1f(dest_rect_h_offset.as_ref(), dest_rect.h as f32);
+        let dest_rect_x_offset = self
+            .context
+            .get_uniform_location(&self.program, "destRect.x");
+        let dest_rect_y_offset = self
+            .context
+            .get_uniform_location(&self.program, "destRect.y");
+        let dest_rect_w_offset = self
+            .context
+            .get_uniform_location(&self.program, "destRect.w");
+        let dest_rect_h_offset = self
+            .context
+            .get_uniform_location(&self.program, "destRect.h");
+        self.context
+            .uniform1f(dest_rect_x_offset.as_ref(), dest_rect.x as f32);
+        self.context
+            .uniform1f(dest_rect_y_offset.as_ref(), dest_rect.y as f32);
+        self.context
+            .uniform1f(dest_rect_w_offset.as_ref(), dest_rect.w as f32);
+        self.context
+            .uniform1f(dest_rect_h_offset.as_ref(), dest_rect.h as f32);
 
-        let texture_dimensions_offset = self.context.get_uniform_location(&self.program, "textureDimensions");
+        let texture_dimensions_offset = self
+            .context
+            .get_uniform_location(&self.program, "textureDimensions");
         self.context.uniform2fv_with_f32_array(
             texture_dimensions_offset.as_ref(),
             &[texture.w as f32, texture.h as f32],
         );
 
-        let projection_offset = self.context.get_uniform_location(&self.program, "projection");
+        let projection_offset = self
+            .context
+            .get_uniform_location(&self.program, "projection");
         let projection: cgmath::Matrix4<f32> =
             cgmath::ortho(0.0, 800.0, 600.0, 0.0, 0.0, 100.0).into();
         let projection: &[f32; 16] = projection.as_ref();
@@ -147,9 +172,13 @@ impl WglRenderer {
             projection.as_ref(),
         );
 
-        let vertex_buffer = self.context.create_buffer().ok_or("Failed to create buffer")?;
+        let vertex_buffer = self
+            .context
+            .create_buffer()
+            .ok_or("Failed to create buffer")?;
 
-        self.context.bind_buffer(GlContext::ARRAY_BUFFER, Some(&vertex_buffer));
+        self.context
+            .bind_buffer(GlContext::ARRAY_BUFFER, Some(&vertex_buffer));
 
         unsafe {
             let vertex_array = js_sys::Float32Array::view(self.buffer.as_f32_slice());
@@ -161,15 +190,21 @@ impl WglRenderer {
             );
         }
 
-        self.context.vertex_attrib_pointer_with_i32(0, 2, GlContext::FLOAT, false, 16, 0);
-        self.context.vertex_attrib_pointer_with_i32(1, 2, GlContext::FLOAT, false, 16, 8);
+        self.context
+            .vertex_attrib_pointer_with_i32(0, 2, GlContext::FLOAT, false, 16, 0);
+        self.context
+            .vertex_attrib_pointer_with_i32(1, 2, GlContext::FLOAT, false, 16, 8);
 
         self.context.enable_vertex_attrib_array(0);
         self.context.enable_vertex_attrib_array(1);
 
-        let index_buffer = self.context.create_buffer().ok_or("Failed to create buffer")?;
+        let index_buffer = self
+            .context
+            .create_buffer()
+            .ok_or("Failed to create buffer")?;
 
-        self.context.bind_buffer(GlContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+        self.context
+            .bind_buffer(GlContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
 
         unsafe {
             let index_array = js_sys::Int16Array::view(&self.indices);
@@ -181,9 +216,97 @@ impl WglRenderer {
             );
         }
 
-        self.context.bind_texture(GlContext::TEXTURE_2D, Some(&texture.texture_data));
-        self.context.draw_elements_with_i32(GlContext::TRIANGLES, 6, GlContext::UNSIGNED_SHORT, 0);
+        self.context
+            .bind_texture(GlContext::TEXTURE_2D, Some(&texture.texture_data));
+        self.context
+            .draw_elements_with_i32(GlContext::TRIANGLES, 6, GlContext::UNSIGNED_SHORT, 0);
         self.context.bind_texture(GlContext::TEXTURE_2D, None);
+
+        Ok(())
+    }
+
+    pub fn create_render_target(&mut self, width: i32, height: i32) -> Result<WglTexture, JsValue> {
+        let texture = self
+            .context
+            .create_texture()
+            .ok_or_else(|| JsValue::from_str("Unable to create texture."))?;
+
+        self.context
+            .bind_texture(GlContext::TEXTURE_2D, Some(&texture));
+
+        self.context
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+                GlContext::TEXTURE_2D,
+                0,
+                GlContext::RGBA as i32,
+                width,
+                height,
+                0,
+                GlContext::RGBA,
+                GlContext::UNSIGNED_BYTE,
+                None,
+            )?;
+
+        self.context.tex_parameteri(
+            GlContext::TEXTURE_2D,
+            GlContext::TEXTURE_MIN_FILTER,
+            GlContext::NEAREST as i32,
+        );
+
+        self.context.tex_parameteri(
+            GlContext::TEXTURE_2D,
+            GlContext::TEXTURE_MAG_FILTER,
+            GlContext::NEAREST as i32,
+        );
+
+        self.context.bind_texture(GlContext::TEXTURE_2D, None);
+
+        Ok(WglTexture {
+            texture_data: texture,
+            w: width,
+            h: height,
+        })
+    }
+
+    pub fn set_render_target(
+        &mut self,
+        render_target: impl Into<Option<&'a WglTexture>>,
+    ) -> Result<(), JsValue> {
+        self.render_target = render_target.into();
+        if let Some(render_target) = self.render_target {
+            let framebuffer = self
+                .context
+                .create_framebuffer()
+                .ok_or(JsValue::from("Unable to create framebuffer."))?;
+
+            self.context
+                .bind_framebuffer(GlContext::FRAMEBUFFER, Some(&framebuffer));
+
+            self.context.framebuffer_texture_2d(
+                GlContext::FRAMEBUFFER,
+                GlContext::COLOR_ATTACHMENT0,
+                GlContext::TEXTURE_2D,
+                Some(&render_target.texture_data),
+                0,
+            );
+
+            // self.context.viewport(0, 0, render_target.w, render_target.h);
+
+            if self
+                .context
+                .check_framebuffer_status(GlContext::FRAMEBUFFER)
+                != GlContext::FRAMEBUFFER_COMPLETE
+            {
+                return Err(JsValue::from_str(
+                    "Error occurred while creating framebuffer.",
+                ));
+            }
+
+            self.framebuffer = Some(framebuffer);
+        } else {
+            self.context.bind_framebuffer(GlContext::FRAMEBUFFER, None);
+            // self.context.viewport(0, 0, self.resolution.0, self.resolution.1);
+        }
 
         Ok(())
     }
