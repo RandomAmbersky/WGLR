@@ -1,11 +1,18 @@
 use crate::vertex::{AsF32Slice, Vertex2D};
+use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
-    HtmlCanvasElement, HtmlImageElement, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext,
-    WebGlShader, WebGlTexture,
+    HtmlImageElement, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader,
+    WebGlTexture,
 };
 
 type GlContext = WebGlRenderingContext;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
 
 #[repr(C)]
 pub struct WglRect {
@@ -17,7 +24,7 @@ pub struct WglRect {
 
 impl WglRect {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
-        Self { x, y, w , h }
+        Self { x, y, w, h }
     }
 }
 
@@ -32,11 +39,28 @@ pub struct WglRenderer2d<'a> {
 }
 
 impl<'a> WglRenderer2d<'a> {
-    pub fn new(canvas: &HtmlCanvasElement, resolution: (f32, f32)) -> Result<Self, JsValue> {
+    pub fn new(canvas_name: &str, resolution: (f32, f32)) -> Result<Self, JsValue> {
+        let window = web_sys::window().ok_or(JsValue::from_str("No window detected."))?;
+
+        let document = window
+            .document()
+            .ok_or(JsValue::from_str("No document in window."))?;
+
+        let canvas = document
+            .get_element_by_id(canvas_name)
+            .ok_or(JsValue::from_str("No canvas in document."))?
+            .dyn_into::<web_sys::HtmlCanvasElement>()?;
+
+        canvas.set_width(resolution.0 as u32);
+
+        canvas.set_height(resolution.1 as u32);
+
         let context = canvas
             .get_context("webgl")?
             .ok_or("")?
             .dyn_into::<GlContext>()?;
+
+        context.pixel_storei(GlContext::UNPACK_FLIP_Y_WEBGL, 1);
 
         context.enable(GlContext::BLEND);
 
@@ -124,11 +148,10 @@ impl<'a> WglRenderer2d<'a> {
         let bottom = src_rect.h as f32 / texture.h as f32;
 
         unsafe {
-            //invert the texture coordinates because we have to lmao
-            self.buffer.get_unchecked_mut(0).tex_coords = [left, bottom];
-            self.buffer.get_unchecked_mut(1).tex_coords = [left, top];
-            self.buffer.get_unchecked_mut(2).tex_coords = [right, bottom];
-            self.buffer.get_unchecked_mut(3).tex_coords = [right, top];
+            self.buffer.get_unchecked_mut(0).tex_coords = [left, top];
+            self.buffer.get_unchecked_mut(1).tex_coords = [left, bottom];
+            self.buffer.get_unchecked_mut(2).tex_coords = [right, top];
+            self.buffer.get_unchecked_mut(3).tex_coords = [right, bottom];
         }
 
         let dest_rect_x_offset = self
