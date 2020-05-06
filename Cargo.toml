@@ -1,7 +1,6 @@
 [package]
-name = "wasm-test"
+name = "wglr"
 version = "0.1.0"
-authors = ["jesmp <joao.eduardo@lar.app>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
