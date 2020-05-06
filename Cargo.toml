@@ -27,6 +27,3 @@ features = [
     'WebGlTexture',
     'Window',
 ]
-
-[lib]
-crate-type = ["cdylib"]
